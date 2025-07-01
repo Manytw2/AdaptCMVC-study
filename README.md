@@ -31,5 +31,6 @@ scikit-learn==1.3.2
 
 ## Running an experiment
 ```bash
-python main.py
+base model training: python source.py
+continual multi-view clustering: python main.py
 ```
