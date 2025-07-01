@@ -7,7 +7,7 @@ import os
 from robustbench.data import load_multiview
 from robustbench.sim_utils import clean_accuracy_target as accuracy_target
 from robustbench.base_model import ConsistencyAE
-import cotta_edit
+import cotta
 from data_load import get_val_transformations,get_train_dataset
 
 logger = logging.getLogger(__name__)
@@ -130,10 +130,10 @@ def setup_optimizer(params):
 
 def setup_cotta(model):
 
-    model = cotta_edit.configure_model(model)
-    params, param_names = cotta_edit.collect_params(model)
+    model = cotta.configure_model(model)
+    params, param_names = cotta.collect_params(model)
     optimizer = setup_optimizer(params)
-    cotta_model = cotta_edit.CoTTA(model, optimizer,
+    cotta_model = cotta.CoTTA(model, optimizer,
                            steps=args.STEPS,
                            episodic=args.EPISODIC,
                             num_classes = args.class_num,
