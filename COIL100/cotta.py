@@ -199,12 +199,12 @@ def collect_params(model):
 
 def copy_model_and_optimizer(model, optimizer):
     """Copy the model and optimizer states for resetting after adaptation."""
-    model_state = deepcopy(model.state_dict())  #只拷贝模型参数的外层指针，所以修改时原模型参数也会发生改变
-    model_anchor = deepcopy(model)  #深度拷贝模型参数，生成新模型，新模型改动时源模型不受影响，但是新模型导数为none
+    model_state = deepcopy(model.state_dict()) 
+    model_anchor = deepcopy(model) 
     optimizer_state = deepcopy(optimizer.state_dict())
     ema_model = deepcopy(model)
     for param in ema_model.parameters():
-        param.detach_()  #ema_model中的参数不可求导反传
+        param.detach_()  
     return model_state, optimizer_state, ema_model, model_anchor
 
 
