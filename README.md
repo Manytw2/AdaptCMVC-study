@@ -7,11 +7,13 @@ Jing Wang, Songhe Feng, Kristoffer Knutsen Wickstrøm, Michael C. Kampffmeyer, i
 
 BibTeX:
 ```text
-@inproceedings{trostenMVC,
+@inproceedings{wangAdaptCMVC,
   title        = {AdaptCMVC: Robust Adaption to Incremental Views in Continual Multi-view Clustering},
   author       = {Jing Wang and Songhe Feng and Kristoffer Knutsen Wickstrøm and Michael C. Kampffmeyer},
   year         = 2025,
-  booktitle    = {2025 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}
+  booktitle    = {2025 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  pages        = {10285-10294}
+
 }
 ```
 
