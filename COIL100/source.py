@@ -192,7 +192,7 @@ if __name__ == '__main__':
     parser.add_argument('--class_num', type=int, default=100, help='class_num')
     parser.add_argument('--STEPS', type=int, default=1, help='class_num')
     parser.add_argument('--EPISODIC', action='store_true', default=False, help='EPISODIC')
-    parser.add_argument('--LR', type=float, default=0.0005, help='LR')
+    parser.add_argument('--LR', type=float, default=0.0001, help='LR')
     parser.add_argument('--BETA', type=float, default=0.9, help='BETA')
     parser.add_argument('--WD', type=float, default=0.0, help='WD')
     parser.add_argument('--METHOD', type=str, default='adamw', help='METHOD')
