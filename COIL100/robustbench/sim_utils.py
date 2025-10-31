@@ -4,17 +4,15 @@ import json
 import math
 import os
 import warnings
-import gdown
 from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-import requests
+# 移除未使用的外部依赖导入（如 requests、gdown），避免环境未安装时报错
 import torch
 from torch import nn
 
-from robustbench.model_zoo import model_dicts as all_models
-from robustbench.model_zoo.enums import BenchmarkDataset, ThreatModel
+# 移除对外部 robustbench.model_zoo 的依赖，保留实际使用到的 metric 导入
 from robustbench.metric import clustering_by_representation, clustering_accuracy
 import numpy as np
 
@@ -26,6 +24,12 @@ def clean_accuracy_source(model: nn.Module,  #######################
                           batch_size: int = 100,
                           class_num: int = 10,
                           device: torch.device = None):
+    """
+    源域（预训练阶段）一致性聚类评估：
+    - 取出模型的表示 z，使用 k-means（在 clustering_by_representation 内部）计算 ACC/NMI/ARI/P/F-score。
+    - 返回 kmeans 结果（标签与中心），作为后续增量视图的先验。
+    - 与 think.md 对齐：这是初始 VAE 阶段的评估输出，为后续自训练提供 B^{v-1} 与历史分配。
+    """
     if device is None:
         device = x.device
     acc = 0.
@@ -62,6 +66,10 @@ def clean_accuracy_source(model: nn.Module,  #######################
     return result, kmeans_pre, kmeans_center
 
 def clu_sim_matrix(last_pre, class_num):
+    """
+    根据上一阶段的聚类标签 last_pre 构造二值同簇矩阵 S：同类为 1，异类为 0。
+    - 与 think.md 的 S 初始化一致（公式 9 的二值化思想）。
+    """
 
     one_hot = torch.zeros(last_pre.shape[0], class_num).cuda()
     one_hot.scatter_(dim=1, index=last_pre.unsqueeze(dim=1).long(),
@@ -80,6 +88,19 @@ def clean_accuracy_target(source_center: np.array,
                           views: int=1,
                           up_alpha: float=0.1,
                           device: torch.device = None):
+    """
+    目标域（增量视图）自适应 + 评估：
+    - 输入：
+      * source_center: 历史聚类原型 B^{v-1}
+      * source_result: 历史聚类标签（上一阶段的预测/共识）
+      * model: CoTTA 包装后的教师-学生结构（内部含 EMA 教师与 Anchor）
+    - 过程：
+      * 构造历史结构矩阵 S^{v-1} 或从 average_simmatrix.npy 读取；
+      * 前向并计算三项损失：\mathcal{L}_r, \mathcal{L}_c（距离加权一致性）, \mathcal{L}_s（结构对齐）；
+      * 聚类评估得到 kmeans_pre 与新的聚类中心；
+      * 使用 EMA 方式更新并保存平均结构矩阵 average_simmatrix.npy（对应 think.md 公式 10）。
+    - 输出：评估指标、kmeans 结果、各项损失均值、聚类中心。
+    """
     if device is None:
         device = x.device
     acc = 0.

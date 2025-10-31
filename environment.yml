@@ -1,16 +1,39 @@
-name: adaptcmvc
+name: adapt-cmvc
 channels:
   - pytorch
+  - nvidia
   - conda-forge
   - defaults
 dependencies:
   - python=3.9
   - numpy=1.23.4
-  - scikit-learn=1.3.2
   - matplotlib
-  - pillow
+  - scikit-learn=1.3.2
+  - scikit-image
+  - pandas
   - tqdm
+  # 核心深度学习库使用conda安装（按照README要求：torch==1.12.1, torchvision==0.13.1）
+  # conda 安装更稳定，可以避免 pip 找不到旧版本的问题
+  - pytorch=1.12.1
+  - torchvision=0.13.1
+  - cudatoolkit=11.6
   - pip
   - pip:
-    - torch==1.12.1
-    - torchvision==0.13.1
+      - pillow
+      - opencv-python==4.8.1.78  # 兼容 NumPy 1.23.4，避免依赖冲突
+      - geotorch
+      - gdown
+      - timm
+      - typing-extensions>=4.7
+      - packaging            # 某些依赖解析会显式报错，建议加上
+      - beautifulsoup4       # 你pip list里曾出现，部分gdown等包用
+      - filelock             # tqdm/gdown等可能要求
+      - requests             # 保障gdown等包依赖
+      # - <如需要，可以添加 pywavelets、pyparsing、networkx、pyside6 等）
+
+# 你如果需要额外科学计算、兼容性，可补充如下一些包:
+#   - pyparsing
+#   - sympy
+#   - threadpoolctl
+#   - tifffile
+#   - mpmath

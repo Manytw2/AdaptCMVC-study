@@ -4,17 +4,13 @@ import json
 import math
 import os
 import warnings
-import gdown
 from collections import OrderedDict
 from pathlib import Path
 from typing import Dict, Optional, Union
 
-import requests
 import torch
 from torch import nn
 
-from robustbench.model_zoo import model_dicts as all_models
-from robustbench.model_zoo.enums import BenchmarkDataset, ThreatModel
 from robustbench.metric import clustering_by_representation,clustering_accuracy
 import numpy as np
 

@@ -17,6 +17,18 @@ logger = logging.getLogger(__name__)
 
 
 def evaluate():
+    """
+    运行一次增量视图适配与评估流程（AdaptCMVC 主流程）。
+
+    流程概览（与 think.md 对齐）：
+    - 构建基础一致性自编码器（VAE 变体）作为学生模型，后续由 CoTTA 包装形成教师-学生框架（EMA 教师）。
+    - 按视角 views=1..V-1 迭代：
+      * 加载上一阶段最优权重与聚类先验（标签与中心）。
+      * 采用自训练的噪声鲁棒一致性损失：教师-学生一致性，且以“到历史原型的距离”作权重（距离越小权重越大）。
+      * 采用结构对齐损失：对齐当前特征的相似度矩阵与历史共识结构矩阵 S（逐步 EMA 更新）。
+      * 记录并选择最优模型（以重构与一致性损失之和作为准则），保存权重、聚类结果与中心。
+    - 返回最后一个视角的最佳一致性聚类精度（consist-acc）。
+    """
 
     AE = ConsistencyAE(basic_hidden_dim=32, c_dim=20, continous=True, in_channel=3, num_res_blocks=3,
                        ch_mult=[1, 2, 4, 8],
@@ -54,10 +66,12 @@ def evaluate():
         old_best_model_path = ""
 
         if views <= 1:
+            # 第一个增量视角：使用提供的源域先验（历史聚类标签与原型）
             source_result = np.load(f'./source_model/v1-20source_result.npy')  # v1-20source_result.npy
             source_result = torch.from_numpy(source_result).cuda()
             source_center = np.load(f'./source_model/v1-20source_center.npy')  # v1-20source_center.npy
         else:
+            # 后续视角：承接上一视角的最优结果，持续更新
             source_result = np.load(f'./last_sim_model/last_sim_result.npy')  # flag_source_result.npy
             source_result = torch.from_numpy(source_result).cuda()
             source_center = np.load(f'./last_sim_model/last_sim_center.npy')  # flag_source_centers.npy
@@ -78,7 +92,15 @@ def evaluate():
             x_test, y_test = x_test[views].cuda(), y_test.cuda()
            
 
-            result, kmeans_pre, r_loss, c_loss, str_loss, cluster_center = accuracy_target(source_center,source_result, model, x_test, y_test, args.BATCH_SIZE, args.class_num,views,args.up_alpha)
+            # accuracy_target 内部执行：
+            # - 教师-学生一致性（带距离感知权重）：反映公式 \mathcal{L}_c
+            # - 结构对齐损失：当前特征相似度 vs 历史共识结构 S，反映公式 \mathcal{L}_s
+            # - 重构/ELBO：反映公式 \mathcal{L}_r
+            # 并进行 S 的 EMA 更新（保存为 average_simmatrix.npy）
+            result, kmeans_pre, r_loss, c_loss, str_loss, cluster_center = accuracy_target(
+                source_center, source_result, model, x_test, y_test,
+                args.BATCH_SIZE, args.class_num, views, args.up_alpha
+            )
 
             cur_loss = r_loss + c_loss
             acc.append(result['consist-acc'])
@@ -93,6 +115,7 @@ def evaluate():
                     # save storage.
                     os.remove(old_best_model_path)
                 old_best_model_path = best_model_path
+                # 保存当前视角的最佳聚类标签与中心（供下一视角承接）
                 np.save(f'./last_sim_model/last_sim_result.npy', kmeans_pre)
                 np.save(f'./last_sim_model/last_sim_center.npy', cluster_center)
 

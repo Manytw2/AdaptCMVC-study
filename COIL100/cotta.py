@@ -13,6 +13,11 @@ import torch.nn.functional as F
 
 
 def get_tta_transforms(gaussian_std: float=0.005,CROP_SIZE=64, soft=True, clip_inputs=False):
+    """
+    Test-Time Augmentation (TTA) 变换流水线。
+    - 作用：提供多样轻/重扰动以稳健估计教师输出（用于一致性约束）。
+    - 与 think.md 对齐：为噪声鲁棒自训练提供稳定参考分布（教师侧），是 \mathcal{L}_c 的关键支撑。
+    """
     img_shape = (CROP_SIZE, CROP_SIZE, 1) #coil20
 
     n_pixels = img_shape[0]
@@ -50,6 +55,11 @@ def get_tta_transforms(gaussian_std: float=0.005,CROP_SIZE=64, soft=True, clip_i
 
 
 def update_ema_variables(ema_model, model, alpha_teacher):#, iteration):
+    """
+    教师模型参数的 EMA 更新：\psi' \leftarrow \alpha\,\psi' + (1-\alpha)\,\psi。
+    - 与 think.md 一致：对应“教师模型参数的 EMA 更新”。
+    - 目的：稳定教师输出，缓解噪声，避免不稳定目标。
+    """
     for ema_param, param in zip(ema_model.parameters(), model.parameters()):
         ema_param.data[:] = alpha_teacher * ema_param[:].data[:] + (1 - alpha_teacher) * param[:].data[:]
     return ema_model
@@ -81,6 +91,10 @@ class CoTTA(nn.Module):
 
     Once tented, a model adapts itself by updating on every forward.
     """
+    # 说明：在本项目中，CoTTA 被扩展为：
+    # - 学生（可训练）+ 教师（EMA）+ Anchor 模型
+    # - 损失为：重构/ELBO（\mathcal{L}_r）+ 噪声鲁棒一致性（\mathcal{L}_c，含距离感知权重）+ 结构对齐（\mathcal{L}_s）
+    # - 结构矩阵 S 采用外部更新（在 sim_utils.clean_accuracy_target 中进行 EMA 融合）
     def __init__(self, model, optimizer, steps=1, episodic=False,num_classes=20,CROP_SIZE=64,contra=1.0,consis=1.0,N=2,sample_num_each_clusters=10):
         super().__init__()
         self.model = model
@@ -122,6 +136,18 @@ class CoTTA(nn.Module):
 
     @torch.enable_grad()  # ensure grads in possible no grad context for testing
     def forward_and_adapt(self, x, optimizer):
+        """
+        单步前向 + 适配：计算三项损失并更新学生参数与 EMA 教师。
+        输入 x = ([input], last_pre, source_center, s_last)
+        - last_pre：上一阶段的聚类标签（历史共识的简化表示）
+        - source_center：上一阶段的聚类原型 B^{v-1}
+        - s_last：历史结构矩阵 S^{v-1} 或其批次切片
+
+        计算：
+        - \mathcal{L}_r：模型内部 VAE 重构/ELBO（保持特征表达）
+        - \mathcal{L}_c：教师-学生一致性（教师来自 EMA，多次 TTA 平均），并以“到原型距离”的倒平方加权（距离小→权重大）
+        - \mathcal{L}_s：结构对齐（当前余弦相似度矩阵 vs 历史结构矩阵）
+        """
         import numpy as np
         simmatrix_path = ""
         input = x[0]
@@ -152,11 +178,13 @@ class CoTTA(nn.Module):
         loss = recon_kl_loss
 
         sim_weight = 1 / torch.from_numpy(distances_to_cluster_centers).cuda()**2
+        # 与 think.md 的 \mathcal{L}_c 一致：以距离感知权重调制一致性损失
         weight_consis_loss = self.consis * (sim_weight * softmax_entropy(z, outputs_ema.detach())).mean(0)
 
         loss += weight_consis_loss
 
         cos_sim = self.similarity(z.unsqueeze(1), z.unsqueeze(0))
+        # 与 think.md 的 \mathcal{L}_s 一致：当前结构（余弦相似）对齐到历史结构矩阵
         stru_loss = self.contra * F.mse_loss(clu_sim, cos_sim, reduction='none').mean(1).mean(0)
         loss += stru_loss
 

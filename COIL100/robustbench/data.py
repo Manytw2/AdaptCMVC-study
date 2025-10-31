@@ -9,9 +9,7 @@ import torchvision.datasets as datasets
 import torchvision.transforms as transforms
 from torch.utils.data import Dataset
 
-from robustbench.model_zoo.enums import BenchmarkDataset
-from robustbench.zenodo_download import DownloadError, zenodo_download
-from robustbench.loaders import CustomImageFolder
+# 移除未使用且会导致外部依赖错误的导入（本地不含 model_zoo 等子包）
 
 
 
@@ -19,6 +17,15 @@ from robustbench.loaders import CustomImageFolder
 
 
 def load_multiview(n_examples,shuffle,dataset) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    一次性取出多视图数据的一个“大批次”（用于本项目评估/适配）。
+    - n_examples: 期望装载的样本数（会作为 DataLoader 的 batch_size）
+    - shuffle: 是否打乱
+    - dataset: 多视图数据集（其 __getitem__ 返回 [views], target）
+    返回：
+    - x_test: 张量列表（第 0 维为视角索引），在上层会以 x_test[view] 选择当前视角
+    - y_test: 对应标签张量
+    """
 
 
 

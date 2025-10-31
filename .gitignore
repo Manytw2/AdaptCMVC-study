@@ -1,0 +1,33 @@
+# Python cache
+test/__pycache__/
+COIL100/__pycache__/
+EMNIST/__pycache__/
+__pycache__/
+*.pyc
+
+# 模型权重和大数组缓存
+*.pth
+*.ckpt
+*.pt
+*.npy
+*.npz
+*.pl
+*.pl~
+
+# 本地数据存储目录(大图片)
+COIL100/MyData/coil-100/*.png
+EMNIST/MyData/*/*.png
+
+# 结果与缓存
+COIL100/last_sim_model/
+EMNIST/last_sim_model/
+COIL100/source_model/*.npy
+COIL100/source_model/*.pth
+EMNIST/source_model/**/*.npy
+EMNIST/source_model/**/*.pth
+
+# 日志和notebook临时
+*.log
+*.ipynb_checkpoints/
+
+# 你可以根据实际再补充其它大规模或敏感数据目录
