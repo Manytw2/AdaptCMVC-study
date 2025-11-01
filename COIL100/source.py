@@ -1,9 +1,14 @@
 import logging
 import math
+import argparse
+import os
+# 在导入 torch 之前禁用 CUDA，避免在 CPU 模式下加载 CUDA DLL（节省内存）
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''  # 默认禁用 GPU
+os.environ['TORCH_CUDA_ARCH_LIST'] = ''  # 禁用 CUDA 架构检测
 import torch
 import torch.optim as optim
 from optimizer import get_optimizer
-import os
 from robustbench.data import load_multiview
 from robustbench.utils import clean_accuracy_source as accuracy_source
 from collections import defaultdict
@@ -11,14 +16,13 @@ from collections import defaultdict
 from robustbench.base_model import ConsistencyAE
 
 import cotta
-import argparse
 from data_load import  get_val_transformations,get_train_dataset
 import numpy as np
 logger = logging.getLogger(__name__)
 
 
-def train_a_epoch(x, y, model, epoch, optimizer):
-    x_test, y_test = x[0].cuda(), y.cuda()
+def train_a_epoch(x, y, model, epoch, optimizer, device):
+    x_test, y_test = x[0].to(device), y.to(device)
     losses = defaultdict(list)
 
 
@@ -51,20 +55,20 @@ def train_a_epoch(x, y, model, epoch, optimizer):
         optimizer.step()
         show_losses = {k: np.mean(v) for k, v in losses.items()}
 
-    result,kmeans_pre, kmeans_center,out_reprs = accuracy_source(model, x_test, y_test, args.BATCH_SIZE, args.class_num)
+    result,kmeans_pre, kmeans_center,out_reprs = accuracy_source(model, x_test, y_test, args.BATCH_SIZE, args.class_num, device=device)
     print(f"[Evaluation]", ', '.join([f'{k}:{v:.4f}' for k, v in result.items()]))
 
     return show_losses, loss.item(), result['consist-acc'], kmeans_pre, kmeans_center, out_reprs
 
 
-def evaluate(description):
+def evaluate(description, device):
     AE = ConsistencyAE(basic_hidden_dim=32, c_dim=20, continous=True, in_channel=3, num_res_blocks=3,
                        ch_mult=[1, 2, 4, 8],
                        block_size=8, temperature=1.0,  ###
                        latent_ch=8, kld_weight=1.0, views=1, categorical_dim=args.class_num)
     base_model = AE
 
-    base_model = base_model.cuda()
+    base_model = base_model.to(device)
 
 
     if args.ADAPTATION == "source":
@@ -95,7 +99,7 @@ def evaluate(description):
 
 
 
-        losses, cur_loss, cur_acc, kmeans_pre, kmeans_center, out_reprs = train_a_epoch(x_test, y_test, model, epoch, optimizer)
+        losses, cur_loss, cur_acc, kmeans_pre, kmeans_center, out_reprs = train_a_epoch(x_test, y_test, model, epoch, optimizer, device)
         loss_list.append(cur_loss)
         acc_list.append(cur_acc)
         if cur_loss <= best_loss:
@@ -180,7 +184,7 @@ if __name__ == '__main__':
     params = {'alpha':1.0,'BATCH_SIZE':64}
     parser = argparse.ArgumentParser()
     parser.add_argument('--alpha', type=float, default=params['alpha'], help='alpha')#1.0
-    parser.add_argument('--cuda_device', type=str, default='0', help='The number of cuda device.')
+    parser.add_argument('--cuda_device', type=str, default='cpu', help='The number of cuda device. Use "cpu" for CPU mode.')
     parser.add_argument('--seed', type=str, default=3407, help='seed')
     parser.add_argument('--CROP_SIZE', type=int, default=64, help='CROP_SIZE')  # 50
     parser.add_argument('--ADAPTATION', type=str, default='source', help='direction of datasets')
@@ -199,15 +203,26 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_device
+    
+    # 设置设备（CPU 或 GPU）
+    if args.cuda_device.lower() == 'cpu':
+        device = torch.device('cpu')
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''  # 禁用 GPU
+    else:
+        device = torch.device(f'cuda:{args.cuda_device}' if torch.cuda.is_available() else 'cpu')
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_device
+    
+    print(f"使用设备: {device}")
 
 
     def setup_seed(seed):
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        if torch.cuda.is_available() and device.type == 'cuda':
+            torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         random.seed(seed)
-        torch.backends.cudnn.deterministic = True
+        if device.type == 'cuda':
+            torch.backends.cudnn.deterministic = True
 
     setup_seed(args.seed)
-    evaluate('"Imagenet-C evaluation.')
+    evaluate('"Imagenet-C evaluation.', device)

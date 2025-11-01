@@ -6,6 +6,7 @@ import torch.jit
 
 import PIL
 import torchvision.transforms as transforms
+from torchvision.transforms import InterpolationMode
 import my_transforms as my_transforms
 from time import time
 import logging
@@ -42,7 +43,7 @@ def get_tta_transforms(gaussian_std: float=0.005,CROP_SIZE=64, soft=True, clip_i
             translate=(1/16, 1/16),
             scale=(0.95, 1.05) if soft else (0.9, 1.1),
             shear=None,
-            interpolation=PIL.Image.BILINEAR,
+            interpolation=InterpolationMode.BILINEAR,  # 使用 InterpolationMode 枚举替代废弃的整数参数
             fill=None
         ),
         transforms.GaussianBlur(kernel_size=5, sigma=[0.001, 0.25] if soft else [0.001, 0.5]),
@@ -78,7 +79,8 @@ class ContrastiveLoss(nn.Module):
         x_k = L2norm(x_k)
         N = x_q.shape[0]
         if mask_pos is None:
-            mask_pos = torch.eye(N).cuda()
+            device = x_q.device
+            mask_pos = torch.eye(N, device=device)
         similarity = torch.div(torch.matmul(x_q, x_k.T), self.temperature)
         similarity = -torch.log(torch.softmax(similarity, dim=1))
         nll_loss = similarity * mask_pos / mask_pos.sum(dim=1, keepdim=True)
@@ -177,7 +179,7 @@ class CoTTA(nn.Module):
         recon_kl_loss, loss_dict = self.model.get_loss(input, 1, 0.7, 4)
         loss = recon_kl_loss
 
-        sim_weight = 1 / torch.from_numpy(distances_to_cluster_centers).cuda()**2
+        sim_weight = 1 / torch.from_numpy(distances_to_cluster_centers).to(z.device)**2
         # 与 think.md 的 \mathcal{L}_c 一致：以距离感知权重调制一致性损失
         weight_consis_loss = self.consis * (sim_weight * softmax_entropy(z, outputs_ema.detach())).mean(0)
 

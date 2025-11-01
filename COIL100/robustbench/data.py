@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 from typing import Callable, Dict, Optional, Sequence, Set, Tuple
 
@@ -30,8 +31,13 @@ def load_multiview(n_examples,shuffle,dataset) -> Tuple[torch.Tensor, torch.Tens
 
 
 
-    test_loader = data.DataLoader(dataset, num_workers=8, batch_size=n_examples,
-                                  sampler= None,shuffle=shuffle,pin_memory=True,
+    # Windows 上多进程 DataLoader 有问题，使用单进程模式
+    # pin_memory 在 CPU 模式下也不需要
+    num_workers = 0 if sys.platform == 'win32' else 8
+    pin_memory = False if not torch.cuda.is_available() else True
+    
+    test_loader = data.DataLoader(dataset, num_workers=num_workers, batch_size=n_examples,
+                                  sampler=None, shuffle=shuffle, pin_memory=pin_memory,
                                     drop_last=True)
 
     x_test, y_test = next(iter(test_loader))

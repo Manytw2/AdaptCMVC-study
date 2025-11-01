@@ -60,7 +60,7 @@ class ClusteringLayer(nn.Module):
                 self.n_clusters,
                 self.hidden,
                 dtype=torch.float
-            ).cuda()
+            )  # 不使用 .cuda()，让 Parameter 在模型移动到设备时自动跟随
             nn.init.xavier_uniform_(initial_cluster_centers)
         else:
             initial_cluster_centers = cluster_centers

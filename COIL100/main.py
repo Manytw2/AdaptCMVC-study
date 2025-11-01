@@ -1,9 +1,13 @@
 import logging
 import numpy as np
-import torch
-import torch.optim as optim
 import argparse
 import os
+# 在导入 torch 之前禁用 CUDA，避免在 CPU 模式下加载 CUDA DLL（节省内存）
+if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+    os.environ['CUDA_VISIBLE_DEVICES'] = ''  # 默认禁用 GPU
+os.environ['TORCH_CUDA_ARCH_LIST'] = ''  # 禁用 CUDA 架构检测
+import torch
+import torch.optim as optim
 from robustbench.data import load_multiview
 from robustbench.sim_utils import clean_accuracy_target as accuracy_target
 from robustbench.base_model import ConsistencyAE
@@ -16,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 
-def evaluate():
+def evaluate(device):
     """
     运行一次增量视图适配与评估流程（AdaptCMVC 主流程）。
 
@@ -24,7 +28,7 @@ def evaluate():
     - 构建基础一致性自编码器（VAE 变体）作为学生模型，后续由 CoTTA 包装形成教师-学生框架（EMA 教师）。
     - 按视角 views=1..V-1 迭代：
       * 加载上一阶段最优权重与聚类先验（标签与中心）。
-      * 采用自训练的噪声鲁棒一致性损失：教师-学生一致性，且以“到历史原型的距离”作权重（距离越小权重越大）。
+      * 采用自训练的噪声鲁棒一致性损失：教师-学生一致性，且以"到历史原型的距离"作权重（距离越小权重越大）。
       * 采用结构对齐损失：对齐当前特征的相似度矩阵与历史共识结构矩阵 S（逐步 EMA 更新）。
       * 记录并选择最优模型（以重构与一致性损失之和作为准则），保存权重、聚类结果与中心。
     - 返回最后一个视角的最佳一致性聚类精度（consist-acc）。
@@ -41,16 +45,18 @@ def evaluate():
 
     for views in range(1, args.views):
         print('###############################views:',views,'######################################')
-        if views<=1:
+        if views == 1:
+            # 第一个增量视角：加载源模型
             AE.load_state_dict(torch.load('./source_model/v1-best-2806-185-0.5641.pth', map_location='cpu'),
                            strict=False)
         else:
-            AE.load_state_dict(torch.load(f'./last_sim_model/last_sim_model--{int(views)}.pth', map_location='cpu'),
+            # 后续视角：加载上一视角的模型
+            AE.load_state_dict(torch.load(f'./last_sim_model/last_sim_model--{int(views-1)}.pth', map_location='cpu'),
                                strict=False)
 
 
         base_model = AE
-        base_model = base_model.cuda()
+        base_model = base_model.to(device)
 
         if args.ADAPTATION == "source":
             logger.info("test-time adaptation: NONE")
@@ -63,17 +69,18 @@ def evaluate():
         best_loss = np.inf
         best_acc = 0.
         result_dir = os.path.join("./last_sim_model")
+        os.makedirs(result_dir, exist_ok=True)  # 确保目录存在
         old_best_model_path = ""
 
         if views <= 1:
             # 第一个增量视角：使用提供的源域先验（历史聚类标签与原型）
             source_result = np.load(f'./source_model/v1-20source_result.npy')  # v1-20source_result.npy
-            source_result = torch.from_numpy(source_result).cuda()
+            source_result = torch.from_numpy(source_result).to(device)
             source_center = np.load(f'./source_model/v1-20source_center.npy')  # v1-20source_center.npy
         else:
             # 后续视角：承接上一视角的最优结果，持续更新
             source_result = np.load(f'./last_sim_model/last_sim_result.npy')  # flag_source_result.npy
-            source_result = torch.from_numpy(source_result).cuda()
+            source_result = torch.from_numpy(source_result).to(device)
             source_center = np.load(f'./last_sim_model/last_sim_center.npy')  # flag_source_centers.npy
 
 
@@ -89,7 +96,7 @@ def evaluate():
                 logger.warning("not resetting model")
 
             x_test, y_test = load_multiview(args.NUM_EX,False,train_dataset)
-            x_test, y_test = x_test[views].cuda(), y_test.cuda()
+            x_test, y_test = x_test[views].to(device), y_test.to(device)
            
 
             # accuracy_target 内部执行：
@@ -99,7 +106,7 @@ def evaluate():
             # 并进行 S 的 EMA 更新（保存为 average_simmatrix.npy）
             result, kmeans_pre, r_loss, c_loss, str_loss, cluster_center = accuracy_target(
                 source_center, source_result, model, x_test, y_test,
-                args.BATCH_SIZE, args.class_num, views, args.up_alpha
+                args.BATCH_SIZE, args.class_num, views, args.up_alpha, device=device
             )
 
             cur_loss = r_loss + c_loss
@@ -186,7 +193,7 @@ if __name__ == '__main__':
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--alpha', type=float, default=params['alpha'], help='alpha')  # 1.0
-    parser.add_argument('--cuda_device', type=str, default='0', help='The number of cuda device.')
+    parser.add_argument('--cuda_device', type=str, default='cpu', help='The number of cuda device. Use "cpu" for CPU mode.')
     parser.add_argument('--seed', type=str, default=3407, help='seed')
     parser.add_argument('--CROP_SIZE', type=int, default=64, help='CROP_SIZE')  # 50
     parser.add_argument('--ADAPTATION', type=str, default='cotta', help='direction of datasets')
@@ -216,16 +223,27 @@ if __name__ == '__main__':
 
 
     args = parser.parse_args()
-    os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_device
+    
+    # 设置设备（CPU 或 GPU）
+    if args.cuda_device.lower() == 'cpu':
+        device = torch.device('cpu')
+        os.environ['CUDA_VISIBLE_DEVICES'] = ''  # 禁用 GPU
+    else:
+        device = torch.device(f'cuda:{args.cuda_device}' if torch.cuda.is_available() else 'cpu')
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_device
+    
+    print(f"使用设备: {device}")
 
 
     def setup_seed(seed):
         torch.manual_seed(seed)
-        torch.cuda.manual_seed_all(seed)
+        if torch.cuda.is_available() and device.type == 'cuda':
+            torch.cuda.manual_seed_all(seed)
         np.random.seed(seed)
         random.seed(seed)
-        torch.backends.cudnn.deterministic = True
+        if device.type == 'cuda':
+            torch.backends.cudnn.deterministic = True
 
     setup_seed(args.seed)
-    best_acc = evaluate()
+    best_acc = evaluate(device)
 

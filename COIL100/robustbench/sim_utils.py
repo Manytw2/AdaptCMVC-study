@@ -70,10 +70,10 @@ def clu_sim_matrix(last_pre, class_num):
     根据上一阶段的聚类标签 last_pre 构造二值同簇矩阵 S：同类为 1，异类为 0。
     - 与 think.md 的 S 初始化一致（公式 9 的二值化思想）。
     """
-
-    one_hot = torch.zeros(last_pre.shape[0], class_num).cuda()
+    device = last_pre.device if isinstance(last_pre, torch.Tensor) else torch.device('cpu')
+    one_hot = torch.zeros(last_pre.shape[0], class_num, device=device)
     one_hot.scatter_(dim=1, index=last_pre.unsqueeze(dim=1).long(),
-                     src=torch.ones(last_pre.shape[0], class_num).cuda())
+                     src=torch.ones(last_pre.shape[0], class_num, device=device))
     clu_sim = torch.matmul(one_hot, one_hot.t())
 
     return clu_sim
@@ -146,7 +146,7 @@ def clean_accuracy_target(source_center: np.array,
         for counter in range(n_batches):
             pre_last = source_result[counter * batch_size:(counter + 1) *
                                                         batch_size].to(device)
-            new_matrix = clu_sim_matrix(torch.from_numpy(kmeans_pre[counter * batch_size:(counter + 1) *batch_size]).cuda(),class_num)
+            new_matrix = clu_sim_matrix(torch.from_numpy(kmeans_pre[counter * batch_size:(counter + 1) *batch_size]).to(device),class_num)
             last_matrix = clu_sim_matrix(pre_last,class_num)
             s = up_alpha * new_matrix+ (1 - up_alpha) * last_matrix
             s_update.append(s.cpu().detach().numpy())
