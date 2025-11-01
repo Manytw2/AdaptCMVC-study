@@ -1,9 +1,35 @@
 # Python cache
-test/__pycache__/
-COIL100/__pycache__/
-EMNIST/__pycache__/
+# 匹配所有目录下的 __pycache__ 文件夹
+**/__pycache__/
 __pycache__/
+
+# Python 编译文件
+*.py[cod]
+*$py.class
+*.so
+
+# Python 字节码文件（所有位置）
 *.pyc
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
 # 模型权重和大数组缓存
 *.pth
